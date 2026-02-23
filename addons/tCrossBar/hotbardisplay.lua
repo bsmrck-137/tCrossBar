@@ -65,7 +65,7 @@ local function PrepareLayout(layout, scale)
         local tx, dimensions;
         if type(entry) == 'table' then
             tx = gTextureCache:GetTexture(entry.Path);
-            dimensions = { Width = entry.Width, Height = entry.Height };
+            dimensions = { Width = entry.Width * scale, Height = entry.Height * scale };
         else
             tx = gTextureCache:GetTexture(entry);
             dimensions = { Width = layout.Icon.Width, Height = layout.Icon.Height };

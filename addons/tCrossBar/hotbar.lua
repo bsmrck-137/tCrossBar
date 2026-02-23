@@ -14,6 +14,8 @@ function Hotbar:New(index)
     o.Layout = nil;
     o.HotkeyLabels = {};
     o.Valid = false;
+    o.DragActive = false;
+    o.DragPosition = { 0, 0 };
     return o;
 end
 
@@ -152,9 +154,6 @@ function Hotbar:Render()
     sprite:End();
 end
 
-local dragPosition = { 0, 0 };
-local dragActive = false;
-
 function Hotbar:DragTest(e)
     local handle = self.Layout and self.Layout.DragHandle;
     if (handle == nil) then
@@ -178,21 +177,21 @@ function Hotbar:HandleMouse(e)
         return;
     end
 
-    if dragActive then
+    if self.DragActive then
         local pos = self.Settings.Position;
-        pos[1] = pos[1] + (e.x - dragPosition[1]);
-        pos[2] = pos[2] + (e.y - dragPosition[2]);
-        dragPosition[1] = e.x;
-        dragPosition[2] = e.y;
+        pos[1] = pos[1] + (e.x - self.DragPosition[1]);
+        pos[2] = pos[2] + (e.y - self.DragPosition[2]);
+        self.DragPosition[1] = e.x;
+        self.DragPosition[2] = e.y;
         self:UpdatePosition();
         if (e.message == 514) or (not self.AllowDrag) then
-            dragActive = false;
+            self.DragActive = false;
             settings.save();
         end
     elseif (self.AllowDrag) and (e.message == 513) and self:DragTest(e) then
-        dragActive = true;
-        dragPosition[1] = e.x;
-        dragPosition[2] = e.y;
+        self.DragActive = true;
+        self.DragPosition[1] = e.x;
+        self.DragPosition[2] = e.y;
         e.blocked = true;
         return;
     end
