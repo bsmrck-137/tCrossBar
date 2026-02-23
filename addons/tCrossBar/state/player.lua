@@ -10,7 +10,6 @@ local playerData = {
     LoggedIn = false,
 };
 
---Initialize name/id/merits if ingame
 local playerIndex = AshitaCore:GetMemoryManager():GetParty():GetMemberTargetIndex(0);
 if playerIndex ~= 0 then
     local entity = AshitaCore:GetMemoryManager():GetEntity();

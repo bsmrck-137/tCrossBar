@@ -9,7 +9,16 @@ gController      = require('controller');
 gSingleDisplay   = require('singledisplay');
 gDoubleDisplay   = require('doubledisplay');
 gExpandedDisplay  = require('expandeddisplay');
+gHotbarBindings  = require('hotbarbindings');
+gHotbarInput     = require('hotbarinput');
+gHotbarDisplay   = require('hotbardisplay');
+gHotbarGUI       = require('hotbargui');
+gHotbarManager   = require('hotbar_manager');
 settings         = require('settings');
+
+local d3d8       = require('d3d8');
+local ffi        = require('ffi');
+local scaling    = require('scaling');
 
 local d3d8       = require('d3d8');
 local ffi        = require('ffi');
@@ -23,6 +32,10 @@ end
 local layoutConfigFolder = string.format('%sconfig/addons/%s/resources/layouts', AshitaCore:GetInstallPath(), addon.name);
 if not ashita.fs.exists(layoutConfigFolder) then
     ashita.fs.create_directory(layoutConfigFolder);
+end
+local hotbarLayoutConfigFolder = string.format('%sconfig/addons/%s/resources/hotbarlayouts', AshitaCore:GetInstallPath(), addon.name);
+if not ashita.fs.exists(hotbarLayoutConfigFolder) then
+    ashita.fs.create_directory(hotbarLayoutConfigFolder);
 end
 
 --Initialize settings..
@@ -70,6 +83,9 @@ ShowRecast = true,
     Controller = 'dualsense',
     BindMenuTimer = 1,
     TapTimer = 0.4,
+
+    --Hotbar Tab..
+    ShowHotbars = true,
 };
 gSettings = settings.load(defaultSettings);
 
@@ -206,13 +222,11 @@ function Initializer:ApplyLayout()
         Error('Failed to load double layout.  Please enter "/tc" to open the menu and select a valid layout.');
     end
 
-    -- Initialize expanded display using the same double layout
     local expandedLayout = LoadFile_s(GetResourcePath('layouts/' .. gSettings.DoubleLayout));
     if expandedLayout then
         PrepareLayout(expandedLayout.Double, gSettings.DoubleScale);
         local position = gSettings.ExpandedPosition;
         if position == nil then
-            -- Position above the double display by default
             local doublePos = gSettings.DoublePosition;
             if doublePos then
                 gSettings.ExpandedPosition = { doublePos[1], doublePos[2] - expandedLayout.Double.Panel.Height - 10 };
@@ -227,14 +241,31 @@ function Initializer:ApplyLayout()
     gTextureCache:Clear();
 end
 
+function Initializer:LoadHotbars(name, id, job)
+    gHotbarBindings:LoadDefaults(name, id, job);
+end
+
+function Initializer:ApplyHotbars()
+    if (gSettings.ShowHotbars == false) then
+        gHotbarDisplay:Destroy();
+        gHotbarInput:Shutdown();
+        return;
+    end
+
+    gHotbarDisplay:Initialize(gSettings.Hotbars);
+    gHotbarInput:Initialize();
+end
+
 settings.register('settings', 'settings_update', function(newSettings)
     gSettings = newSettings;
     UpdateSettings();
     Initializer:ApplyController();
     Initializer:ApplyLayout();
+    Initializer:ApplyHotbars();
 end);
 
 Initializer:ApplyController();
 Initializer:ApplyLayout();
+Initializer:ApplyHotbars();
 
 return Initializer;
