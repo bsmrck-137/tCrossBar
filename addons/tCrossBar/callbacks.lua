@@ -286,7 +286,35 @@ ashita.events.register('mouse', 'mouse_cb', function (e)
     end
 end);
 
+local modifierScanCodes = {
+    [0x1D] = 'Ctrl', [0x9D] = 'Ctrl',
+    [0x38] = 'Alt',  [0xB8] = 'Alt',
+    [0x2A] = 'Shift', [0x36] = 'Shift',
+};
+
+local function ShouldBlockModifier(modifierName)
+    if (ShouldHide()) then
+        return false;
+    end
+    if (gHotbarInput == nil) then
+        return false;
+    end
+    local modBinds = gHotbarInput:HasModifierBinds();
+    if (modBinds == nil) then
+        return false;
+    end
+    return modBinds[modifierName] == true;
+end
+
 ashita.events.register('keyboard', 'keyboard_cb', function (e)
+    local modName = modifierScanCodes[e.key];
+    if (modName ~= nil) then
+        if (ShouldBlockModifier(modName)) then
+            e.blocked = true;
+            return;
+        end
+    end
+
     local managerCapturing = gHotbarManager:GetCapturing();
     local guiCapturing = (gHotbarGUI ~= nil) and (gHotbarGUI.GetCapturing ~= nil) and (gHotbarGUI:GetCapturing());
     if (managerCapturing or guiCapturing) then

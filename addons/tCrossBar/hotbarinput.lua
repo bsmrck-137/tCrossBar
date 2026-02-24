@@ -20,8 +20,6 @@ local function FormatKeybind(keybind)
 
     formatted = string.lower(formatted);
 
-    formatted = string.gsub(formatted, '([^!@#]+)(%+)([%w].*)$', '%1%3');
-
     return formatted;
 end
 
@@ -152,6 +150,22 @@ end
 
 function HotbarInput:GetRegisteredKeybinds()
     return self.RegisteredKeybinds;
+end
+
+function HotbarInput:HasModifierBinds()
+    local result = { Ctrl = false, Alt = false, Shift = false };
+    for keybind, _ in pairs(self.RegisteredKeybinds) do
+        if (string.find(keybind, '%^')) then
+            result.Ctrl = true;
+        end
+        if (string.find(keybind, '!')) then
+            result.Alt = true;
+        end
+        if (string.find(keybind, '%+')) then
+            result.Shift = true;
+        end
+    end
+    return result;
 end
 
 function HotbarInput:HandleHotbarCommand(hotbarIndex, slotIndex)
