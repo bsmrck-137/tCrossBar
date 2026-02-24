@@ -24,6 +24,10 @@ function exposed:GetActive()
     return (state.IsOpen[1] == true) or gMacroEditor:GetActive();
 end
 
+function exposed:GetCapturing()
+    return (state.CapturingKey == true);
+end
+
 function exposed:GetBindMode()
     return bindMode.Active;
 end

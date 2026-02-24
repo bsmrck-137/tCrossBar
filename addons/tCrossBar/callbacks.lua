@@ -287,15 +287,15 @@ ashita.events.register('mouse', 'mouse_cb', function (e)
 end);
 
 ashita.events.register('keyboard', 'keyboard_cb', function (e)
-    if (gHotbarManager:GetCapturing()) then
-        if (gHotbarManager:HandleKeyCapture(e.key, (e.down == 1))) then
-            e.blocked = true;
+    local managerCapturing = gHotbarManager:GetCapturing();
+    local guiCapturing = (gHotbarGUI ~= nil) and (gHotbarGUI.GetCapturing ~= nil) and (gHotbarGUI:GetCapturing());
+    if (managerCapturing or guiCapturing) then
+        if (managerCapturing) then
+            gHotbarManager:HandleKeyCapture(e.key, (e.down == 1));
+        elseif (guiCapturing) then
+            gHotbarGUI:HandleKeyCapture(e.key, (e.down == 1));
         end
-    end
-    
-    if (gHotbarGUI) then
-        if (gHotbarGUI:HandleKeyCapture(e.key, (e.down == 1))) then
-            e.blocked = true;
-        end
+        e.blocked = true;
+        return;
     end
 end);

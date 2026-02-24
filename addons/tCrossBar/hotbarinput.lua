@@ -20,6 +20,8 @@ local function FormatKeybind(keybind)
 
     formatted = string.lower(formatted);
 
+    formatted = string.gsub(formatted, '([^!@#]+)(%+)([%w].*)$', '%1%3');
+
     return formatted;
 end
 

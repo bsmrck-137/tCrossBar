@@ -73,7 +73,7 @@ function Hotbar:FormatHotkey(hotkey)
     end
 
     local result = hotkey;
-    result = string.gsub(result, '^', 'Ctrl+');
+    result = string.gsub(result, '%^', 'Ctrl+');
     result = string.gsub(result, '!', 'Alt+');
     result = string.gsub(result, '%+', 'Shift+');
     result = string.gsub(result, '#', 'Apps+');
