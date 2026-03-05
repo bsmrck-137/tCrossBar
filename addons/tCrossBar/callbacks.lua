@@ -202,50 +202,52 @@ player:UpdateBLUSpells();
     end
     
     isHidden = false;
-    
+
     renderTarget = gSingleDisplay;
     local macroState = gController:GetMacroState();
 
-    if (gSettings.ShowExpandedDisplay) and ((macroState == 5) or (macroState == 6)) then
-        local mainState = (macroState == 5) and 1 or 2;
-        if (gSettings.LTRTMode == 'FullDouble') then
-            gDoubleDisplay:Render(mainState, false, -1);
-            renderTarget = gDoubleDisplay;
-        elseif (gSettings.LTRTMode == 'HalfDouble') then
-            gDoubleDisplay:Render(mainState, true, -1);
-            renderTarget = gDoubleDisplay;
-        else
-            gSingleDisplay:Render(mainState);
-            renderTarget = gSingleDisplay;
-        end
-        gExpandedDisplay:Render(macroState);
-    elseif (macroState == 0) then
-        if (gSettings.ShowDoubleDisplay) then
-            gDoubleDisplay:Render(0, false, 0);
-            renderTarget = gDoubleDisplay;
-        end
-        if (gSettings.ShowExpandedDisplay) then
-            gExpandedDisplay:Render();
-        end
-    elseif (macroState < 3) then
-        if (gSettings.LTRTMode == 'FullDouble') then
-            gDoubleDisplay:Render(macroState, false, macroState);
-            renderTarget = gDoubleDisplay;
-        elseif (gSettings.LTRTMode == 'HalfDouble') then
-            gDoubleDisplay:Render(macroState, true);
+    if (gSettings.ShowPaletteDisplay) then
+        if (gSettings.ShowExpandedDisplay) and ((macroState == 5) or (macroState == 6)) then
+            local mainState = (macroState == 5) and 1 or 2;
+            if (gSettings.LTRTMode == 'FullDouble') then
+                gDoubleDisplay:Render(mainState, false, -1);
+                renderTarget = gDoubleDisplay;
+            elseif (gSettings.LTRTMode == 'HalfDouble') then
+                gDoubleDisplay:Render(mainState, true, -1);
+                renderTarget = gDoubleDisplay;
+            else
+                gSingleDisplay:Render(mainState);
+                renderTarget = gSingleDisplay;
+            end
+            gExpandedDisplay:Render(macroState);
+        elseif (macroState == 0) then
+            if (gSettings.ShowDoubleDisplay) then
+                gDoubleDisplay:Render(0, false, 0);
+                renderTarget = gDoubleDisplay;
+            end
             if (gSettings.ShowExpandedDisplay) then
                 gExpandedDisplay:Render();
+            end
+        elseif (macroState < 3) then
+            if (gSettings.LTRTMode == 'FullDouble') then
+                gDoubleDisplay:Render(macroState, false, macroState);
+                renderTarget = gDoubleDisplay;
+            elseif (gSettings.LTRTMode == 'HalfDouble') then
+                gDoubleDisplay:Render(macroState, true);
+                if (gSettings.ShowExpandedDisplay) then
+                    gExpandedDisplay:Render();
+                end
+            else
+                renderTarget:Render(macroState);
+                if (gSettings.ShowExpandedDisplay) then
+                    gExpandedDisplay:Render();
+                end
             end
         else
             renderTarget:Render(macroState);
             if (gSettings.ShowExpandedDisplay) then
                 gExpandedDisplay:Render();
             end
-        end
-    else
-        renderTarget:Render(macroState);
-        if (gSettings.ShowExpandedDisplay) then
-            gExpandedDisplay:Render();
         end
     end
 
@@ -290,6 +292,8 @@ local modifierScanCodes = {
     [0x1D] = 'Ctrl', [0x9D] = 'Ctrl',
     [0x38] = 'Alt',  [0xB8] = 'Alt',
     [0x2A] = 'Shift', [0x36] = 'Shift',
+    [0x11] = 'Ctrl',
+    [0x12] = 'Alt',
 };
 
 local function ShouldBlockModifier(modifierName)

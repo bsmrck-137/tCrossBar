@@ -58,5 +58,11 @@ end);
 * desc : Event called when the addon is being unloaded.
 --]]
 ashita.events.register('unload', 'unload_cb', function ()
+    if (gBindings ~= nil) and (gBindings.Save ~= nil) then
+        gBindings:Save();
+    end
+    if (gHotbarBindings ~= nil) and (gHotbarBindings.Save ~= nil) then
+        gHotbarBindings:Save();
+    end
     gdi:destroy_interface();
 end);

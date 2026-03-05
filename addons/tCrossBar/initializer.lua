@@ -60,6 +60,7 @@ ShowRecast = true,
     ShowTrigger = true,
     ShowPalette = true,
     ShowSinglePalette = false,
+    ShowPaletteDisplay = true,
 
     --Behavior tab..
     ClickToActivate = true,
@@ -86,6 +87,7 @@ ShowRecast = true,
 
     --Hotbar Tab..
     ShowHotbars = true,
+    BlockCtrlAltFromGame = true,
 };
 gSettings = settings.load(defaultSettings);
 
@@ -249,11 +251,13 @@ function Initializer:ApplyHotbars()
     if (gSettings.ShowHotbars == false) then
         gHotbarDisplay:Destroy();
         gHotbarInput:Shutdown();
+        gHotbarInput:SetModifierBlocking((gSettings.BlockCtrlAltFromGame == true));
         return;
     end
 
     gHotbarDisplay:Initialize(gSettings.Hotbars);
     gHotbarInput:Initialize();
+    gHotbarInput:SetModifierBlocking((gSettings.BlockCtrlAltFromGame == true));
 end
 
 settings.register('settings', 'settings_update', function(newSettings)

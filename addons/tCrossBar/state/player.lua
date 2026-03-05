@@ -10,6 +10,18 @@ local playerData = {
     LoggedIn = false,
 };
 
+local function ReloadHotbars(name, id, job)
+    if (gHotbarBindings ~= nil) and (gHotbarBindings.LoadDefaults ~= nil) then
+        gHotbarBindings:LoadDefaults(name, id, job);
+    end
+    if (gHotbarDisplay ~= nil) and (gHotbarDisplay.UpdateBindings ~= nil) then
+        gHotbarDisplay:UpdateBindings();
+    end
+    if (gHotbarInput ~= nil) and (gHotbarInput.RefreshKeybinds ~= nil) then
+        gHotbarInput:RefreshKeybinds();
+    end
+end
+
 local playerIndex = AshitaCore:GetMemoryManager():GetParty():GetMemberTargetIndex(0);
 if playerIndex ~= 0 then
     local entity = AshitaCore:GetMemoryManager():GetEntity();
@@ -27,6 +39,7 @@ if playerIndex ~= 0 then
         
         if (playerData.Job.MainJob > 0) and (playerData.Id ~= 0) then
             gBindings:LoadDefaults(playerData.Name, playerData.Id, playerData.Job.MainJob);
+            ReloadHotbars(playerData.Name, playerData.Id, playerData.Job.MainJob);
         end
 
         local pInventory = AshitaCore:GetPointerManager():Get('inventory');
@@ -93,7 +106,10 @@ ashita.events.register('packet_in', 'player_tracker_handleincomingpacket', funct
             name = string.sub(name, 1, i - 1);
         end
 
-        if (id ~= playerData.Id) or (name ~= playerData.Name) then
+        local changedIdentity = (id ~= playerData.Id) or (name ~= playerData.Name);
+        local changedJob = (playerData.Job == nil) or (job ~= playerData.Job.MainJob) or (sub ~= playerData.Job.SubJob);
+
+        if (changedIdentity) then
             playerData = {
                 Abilities = T{},
                 Spells = T{},
@@ -109,12 +125,15 @@ ashita.events.register('packet_in', 'player_tracker_handleincomingpacket', funct
                 JobPoints = {},
                 JobPointInit = { Categories = false, Totals = false, Timer = os.clock() + 3 }
             };
-            gBindings:LoadDefaults(playerData.Name, playerData.Id, playerData.Job.MainJob);
-        elseif (job ~= playerData.Job.MainJob) or (sub ~= playerData.Job.SubJob) then
+        end
+
+        if (changedIdentity) or (changedJob) then
             playerData.Job.MainJob = job;
             playerData.Job.SubJob = sub;
             gBindings:LoadDefaults(playerData.Name, playerData.Id, playerData.Job.MainJob);
+            ReloadHotbars(playerData.Name, playerData.Id, playerData.Job.MainJob);
         end
+
         playerData.LoggedIn = true;
     elseif (e.id == 0x00B) then
         playerData.LoggedIn = false;
@@ -125,6 +144,7 @@ ashita.events.register('packet_in', 'player_tracker_handleincomingpacket', funct
             playerData.Job.MainJob = job;
             playerData.Job.SubJob = sub;
             gBindings:LoadDefaults(playerData.Name, playerData.Id, playerData.Job.MainJob);
+            ReloadHotbars(playerData.Name, playerData.Id, playerData.Job.MainJob);
         end
     elseif (e.id == 0x061) then
         local job = struct.unpack('B', e.data, 0x0C + 1);
@@ -135,6 +155,7 @@ ashita.events.register('packet_in', 'player_tracker_handleincomingpacket', funct
             playerData.Job.MainJob = job;
             playerData.Job.SubJob = sub;
             gBindings:LoadDefaults(playerData.Name, playerData.Id, playerData.Job.MainJob);
+            ReloadHotbars(playerData.Name, playerData.Id, playerData.Job.MainJob);
         end
         playerData.Job.MainJobLevel = mainLevel;
         playerData.Job.SubJobLevel = subLevel;

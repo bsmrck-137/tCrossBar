@@ -332,6 +332,8 @@ CheckBox('Recast', 'ShowRecast');
                     imgui.ShowHelp('Shows selected palette on single display.');
                     CheckBox('Palette(Double)', 'ShowPalette');
                     imgui.ShowHelp('Shows selected palette on double display.');
+                    CheckBox('Palette Display', 'ShowPaletteDisplay');
+                    imgui.ShowHelp('Shows the crossbar palette display.');
                     CheckBox('Dim Inactive', 'DimInactive');
                     imgui.ShowHelp('When enabled, inactive crossbars will be dimmed to highlight the active bar.');
                     imgui.EndGroup();
@@ -493,6 +495,9 @@ function exposed:RenderHotbarsTab()
     imgui.TextColored(header, 'Hotbar Settings');
     CheckBox('Show Hotbars', 'ShowHotbars');
     imgui.ShowHelp('When enabled, keyboard hotbars will be displayed alongside controller crossbars.');
+
+    CheckBox('Block Ctrl/Alt from game', 'BlockCtrlAltFromGame');
+    imgui.ShowHelp('When enabled, Ctrl and Alt are never sent to the game, so the native macro palette does not open. Disable if you need to use game macros.');
 
     imgui.Separator();
     imgui.TextColored(header, 'Hotbar Visibility');

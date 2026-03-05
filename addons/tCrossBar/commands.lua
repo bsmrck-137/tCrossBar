@@ -10,6 +10,10 @@ ashita.events.register('command', 'command_cb', function (e)
         return;
     end
 
+    if (#args > 1) and (string.lower(args[2]) == 'noop') then
+        return;
+    end
+
     if (#args > 1) and (string.lower(args[2]) == 'bindmode') then        
         if (gBindingGUI:GetActive()) then
             gBindingGUI:Close();
@@ -92,7 +96,7 @@ ashita.events.register('command', 'command_cb', function (e)
                 return;
             end
 
-            gHotbarInput:ClearKeybind(barIndex, slotIndex);
+            gHotbarInput:SetKeybind(barIndex, slotIndex, '', false);
             Message(string.format('Unbound Bar %d Slot %d', barIndex, slotIndex));
             return;
 

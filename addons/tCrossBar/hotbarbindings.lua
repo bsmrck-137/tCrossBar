@@ -46,28 +46,37 @@ local function WriteBinding(writer, depth, slotIndex, slot)
     writer:write(string.format('%sHotkey = %q,\n', pad2, slot.Hotkey or ''));
 
     if (slot.Binding ~= nil) then
+        local actionType = tostring(slot.Binding.ActionType or '');
         writer:write(string.format('%sBinding = {\n', pad2));
-        writer:write(string.format('%sActionType = %q,\n', pad3, slot.Binding.ActionType));
+        writer:write(string.format('%sActionType = %q,\n', pad3, actionType));
 
-        if T{'Ability', 'Item', 'Spell', 'Trust', 'Weaponskill'}:contains(slot.Binding.ActionType) then
-            writer:write(string.format('%sId = %u,\n', pad3, slot.Binding.Id));
+        if T{'Ability', 'Item', 'Spell', 'Trust', 'Weaponskill'}:contains(actionType) then
+            local actionId = tonumber(slot.Binding.Id) or 0;
+            writer:write(string.format('%sId = %u,\n', pad3, actionId));
         end
 
+        local macro = slot.Binding.Macro;
+        if (type(macro) ~= 'table') then
+            macro = T{};
+        end
         writer:write(string.format('%sMacro = T{\n', pad3));
-        for _, line in ipairs(slot.Binding.Macro) do
-            writer:write(string.format('%s    %q,\n', pad3, line));
+        for _, line in ipairs(macro) do
+            writer:write(string.format('%s    %q,\n', pad3, tostring(line))); 
         end
         writer:write(string.format('%s},\n', pad3));
 
-        if (slot.Binding.CostOverride ~= nil) then
+        if (type(slot.Binding.CostOverride) == 'table') then
             writer:write(string.format('%sCostOverride = T{ ', pad3));
             local first = true;
             for _, id in ipairs(slot.Binding.CostOverride) do
-                if not first then
-                    writer:write(', ');
+                local itemId = tonumber(id);
+                if (itemId ~= nil) then
+                    if not first then
+                        writer:write(', ');
+                    end
+                    writer:write(tostring(itemId));
+                    first = false;
                 end
-                writer:write(tostring(id));
-                first = false;
             end
             writer:write(' },\n');
         end
@@ -113,40 +122,143 @@ local function WriteHotbar(writer, hotbarIndex, hotbar)
     writer:write(string.format('%s},\n', pad1));
 end
 
+local function LoadDefaultsInternal(name, id, job)
+    if (name == '') or (id == 0) then
+        bindings = {
+            GlobalBindings = T{},
+            JobBindings = T{},
+        };
+        return;
+    end
+
+    local characterPath = string.format('%sconfig/addons/%s/%s_%u/hotbars', AshitaCore:GetInstallPath(), addon.name, name, id);
+    if not (ashita.fs.exists(characterPath)) then
+        ashita.fs.create_directory(characterPath);
+    end
+
+    bindings.GlobalPath = string.format('%s/global.lua', characterPath);
+    bindings.GlobalBindings = LoadFile_s(bindings.GlobalPath);
+    if (bindings.GlobalBindings == nil) then
+        bindings.GlobalBindings = T{};
+    end
+
+    local jobAbbr = AshitaCore:GetResourceManager():GetString('jobs.names_abbr', job);
+    if (jobAbbr == nil) or (jobAbbr == '') then
+        Error(string.format('Failed to resolve job abbreviation for hotbars (job id: %u).', job));
+        bindings.JobPath = nil;
+        bindings.JobBindings = T{};
+        return;
+    end
+
+    bindings.JobPath = string.format('%s/%s.lua', characterPath, jobAbbr);
+    bindings.JobBindings = LoadFile_s(bindings.JobPath);
+    if (bindings.JobBindings == nil) then
+        bindings.JobBindings = T{};
+    end
+end
+
+local function TryInitializePaths()
+    if (bindings.GlobalPath ~= nil) and (bindings.JobPath ~= nil) then
+        return true;
+    end
+
+    local party = AshitaCore:GetMemoryManager():GetParty();
+    if (party == nil) then
+        return false;
+    end
+    local playerIndex = party:GetMemberTargetIndex(0);
+    if (playerIndex == 0) then
+        return false;
+    end
+
+    local entity = AshitaCore:GetMemoryManager():GetEntity();
+    if (entity == nil) then
+        return false;
+    end
+    local flags = entity:GetRenderFlags0(playerIndex);
+    if (bit.band(flags, 0x200) ~= 0x200) or (bit.band(flags, 0x4000) == 0x4000) then
+        return false;
+    end
+
+    local name = entity:GetName(playerIndex);
+    local id = entity:GetServerId(playerIndex);
+    local player = AshitaCore:GetMemoryManager():GetPlayer();
+    if (player == nil) then
+        return false;
+    end
+    local job = player:GetMainJob();
+
+    if (name == nil) or (name == '') or (id == 0) or (job == 0) then
+        return false;
+    end
+
+    LoadDefaultsInternal(name, id, job);
+
+    return (bindings.GlobalPath ~= nil) and (bindings.JobPath ~= nil);
+end
+
 local function WriteGlobals()
     if (bindings.GlobalPath == nil) then
-        return;
+        TryInitializePaths();
+    end
+    if (bindings.GlobalPath == nil) then
+        Error('Cannot save hotbar globals: path is not initialized.');
+        return false;
     end
 
-    local writer = io.open(bindings.GlobalPath, 'w');
+    local writer, openError = io.open(bindings.GlobalPath, 'w');
     if (writer == nil) then
-        return;
+        Error(string.format('Failed to open hotbar globals for writing: $H%s$R (%s).', bindings.GlobalPath, tostring(openError or 'unknown error')));
+        return false;
     end
 
-    writer:write('return T{\n');
-    for hotbarIndex, hotbar in pairs(bindings.GlobalBindings) do
-        WriteHotbar(writer, hotbarIndex, hotbar);
-    end
-    writer:write('};\n');
+    local success, writeError = pcall(function()
+        writer:write('return T{\n');
+        for hotbarIndex, hotbar in pairs(bindings.GlobalBindings) do
+            WriteHotbar(writer, hotbarIndex, hotbar);
+        end
+        writer:write('};\n');
+    end);
     writer:close();
+
+    if (success == false) then
+        Error(string.format('Failed to write hotbar globals file: $H%s$R (%s).', bindings.GlobalPath, tostring(writeError)));
+        return false;
+    end
+
+    return true;
 end
 
 local function WriteJob()
     if (bindings.JobPath == nil) then
-        return;
+        TryInitializePaths();
+    end
+    if (bindings.JobPath == nil) then
+        Error('Cannot save hotbar job bindings: path is not initialized.');
+        return false;
     end
 
-    local writer = io.open(bindings.JobPath, 'w');
+    local writer, openError = io.open(bindings.JobPath, 'w');
     if (writer == nil) then
-        return;
+        Error(string.format('Failed to open hotbar job file for writing: $H%s$R (%s).', bindings.JobPath, tostring(openError or 'unknown error')));
+        return false;
     end
 
-    writer:write('return T{\n');
-    for hotbarIndex, hotbar in pairs(bindings.JobBindings) do
-        WriteHotbar(writer, hotbarIndex, hotbar);
-    end
-    writer:write('};\n');
+    local success, writeError = pcall(function()
+        writer:write('return T{\n');
+        for hotbarIndex, hotbar in pairs(bindings.JobBindings) do
+            WriteHotbar(writer, hotbarIndex, hotbar);
+        end
+        writer:write('};\n');
+    end);
     writer:close();
+
+    if (success == false) then
+        Error(string.format('Failed to write hotbar job file: $H%s$R (%s).', bindings.JobPath, tostring(writeError)));
+        return false;
+    end
+
+    return true;
 end
 
 local function MergeHotbars(globalBar, jobBar)
@@ -195,30 +307,7 @@ end
 local exposed = {};
 
 function exposed:LoadDefaults(name, id, job)
-    if (name == '') or (id == 0) then
-        bindings = {
-            GlobalBindings = T{},
-            JobBindings = T{},
-        };
-        return;
-    end
-
-    local characterPath = string.format('%sconfig/addons/%s/%s_%u/hotbars', AshitaCore:GetInstallPath(), addon.name, name, id);
-    if not (ashita.fs.exists(characterPath)) then
-        ashita.fs.create_directory(characterPath);
-    end
-
-    bindings.GlobalPath = string.format('%s/global.lua', characterPath);
-    bindings.GlobalBindings = LoadFile_s(bindings.GlobalPath);
-    if (bindings.GlobalBindings == nil) then
-        bindings.GlobalBindings = T{};
-    end
-
-    bindings.JobPath = string.format('%s/%s.lua', characterPath, AshitaCore:GetResourceManager():GetString('jobs.names_abbr', job));
-    bindings.JobBindings = LoadFile_s(bindings.JobPath);
-    if (bindings.JobBindings == nil) then
-        bindings.JobBindings = T{};
-    end
+    LoadDefaultsInternal(name, id, job);
 end
 
 function exposed:GetMergedHotbars()
@@ -350,8 +439,9 @@ function exposed:ClearSlot(hotbarIndex, slotIndex, isGlobal)
 end
 
 function exposed:Save()
-    WriteGlobals();
-    WriteJob();
+    local globalSuccess = WriteGlobals();
+    local jobSuccess = WriteJob();
+    return (globalSuccess == true) and (jobSuccess == true);
 end
 
 function exposed:UpdateHotbarSettings(hotbarIndex, settings)

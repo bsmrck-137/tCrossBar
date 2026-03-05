@@ -243,15 +243,20 @@ function exposed:Render()
             imgui.TableSetColumnIndex(5);
             
             imgui.PushID(string.format('Actions_%d', slotIndex));
+            local selectedHotbar = state.SelectedHotbar;
+            local selectedSlot = slotIndex;
             
             if isUsed then
                 if (imgui.Button('Edit', { 40, 0 })) then
-                    local hotkeyLabel = string.format('HB%d:%d', state.SelectedHotbar, slotIndex);
+                    local hotkeyLabel = string.format('HB%d:%d', selectedHotbar, selectedSlot);
                     gMacroEditor:Show(hotkeyLabel, binding, function(hk, newBinding)
                         if (newBinding == nil) then
-                            ClearSlot(state.SelectedHotbar, slotIndex);
+                            ClearSlot(selectedHotbar, selectedSlot);
                         else
-                            gHotbarBindings:BindJob(state.SelectedHotbar, slotIndex, newBinding);
+                            gHotbarBindings:BindJob(selectedHotbar, selectedSlot, newBinding);
+                        end
+                        if (gHotbarBindings ~= nil) then
+                            gHotbarBindings:Save();
                         end
                         if gHotbarDisplay then
                             gHotbarDisplay:UpdateBindings();
@@ -260,14 +265,20 @@ function exposed:Render()
                 end
                 imgui.SameLine();
                 if (imgui.Button('Clear', { 40, 0 })) then
-                    ClearSlot(state.SelectedHotbar, slotIndex);
+                    ClearSlot(selectedHotbar, selectedSlot);
+                    if (gHotbarBindings ~= nil) then
+                        gHotbarBindings:Save();
+                    end
                 end
             else
                 if (imgui.Button('Add', { 40, 0 })) then
-                    local hotkeyLabel = string.format('HB%d:%d', state.SelectedHotbar, slotIndex);
+                    local hotkeyLabel = string.format('HB%d:%d', selectedHotbar, selectedSlot);
                     gMacroEditor:Show(hotkeyLabel, nil, function(hk, newBinding)
                         if (newBinding ~= nil) then
-                            gHotbarBindings:BindJob(state.SelectedHotbar, slotIndex, newBinding);
+                            gHotbarBindings:BindJob(selectedHotbar, selectedSlot, newBinding);
+                            if (gHotbarBindings ~= nil) then
+                                gHotbarBindings:Save();
+                            end
                         end
                         if gHotbarDisplay then
                             gHotbarDisplay:UpdateBindings();
@@ -290,6 +301,9 @@ function exposed:Render()
             SaveHotkey(state.SelectedHotbar, slotIndex, '');
             state.HotkeyInputs[slotIndex] = { '' };
         end
+        if (gHotbarBindings ~= nil) then
+            gHotbarBindings:Save();
+        end
         Message(string.format('Cleared all hotkeys for Bar %d', state.SelectedHotbar));
     end
     imgui.SameLine();
@@ -297,7 +311,22 @@ function exposed:Render()
         for slotIndex = 1, 12 do
             ClearSlot(state.SelectedHotbar, slotIndex);
         end
+        if (gHotbarBindings ~= nil) then
+            gHotbarBindings:Save();
+        end
         Message(string.format('Cleared all bindings for Bar %d', state.SelectedHotbar));
+    end
+    imgui.SameLine();
+    if (imgui.Button('Save Hotbars To Disk')) then
+        if (gHotbarBindings ~= nil) then
+            if (gHotbarBindings:Save() == true) then
+                Message('Saved hotbars to disk.');
+            else
+                Error('Failed to save hotbars to disk. Check previous errors for details.');
+            end
+        else
+            Error('Cannot save hotbars: hotbar bindings are not initialized.');
+        end
     end
     imgui.SameLine();
     if (imgui.Button('Refresh Display')) then

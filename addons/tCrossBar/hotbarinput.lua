@@ -1,7 +1,11 @@
 local HotbarInput = {
     RegisteredKeybinds = T{},
+    ModifierBlocksActive = false,
     Initialized = false,
 };
+
+local MODIFIER_BLOCK_KEYS = T{ 'LCONTROL', 'RCONTROL', 'LALT', 'RALT' };
+local MODIFIER_BLOCK_COMMAND = '/tc noop';
 
 local function CheckKeybindConflict(keybind)
     return false, nil;
@@ -74,6 +78,28 @@ local function UnregisterKeybind(keybind)
     end
 end
 
+local function RegisterModifierBlocks()
+    local chatManager = AshitaCore:GetChatManager();
+    if (chatManager == nil) then
+        return;
+    end
+    for _, keyName in ipairs(MODIFIER_BLOCK_KEYS) do
+        AshitaCore:GetChatManager():QueueCommand(-1, string.format('/bind %s %s', keyName, MODIFIER_BLOCK_COMMAND));
+    end
+    HotbarInput.ModifierBlocksActive = true;
+end
+
+local function UnregisterModifierBlocks()
+    local chatManager = AshitaCore:GetChatManager();
+    if (chatManager == nil) then
+        return;
+    end
+    for _, keyName in ipairs(MODIFIER_BLOCK_KEYS) do
+        AshitaCore:GetChatManager():QueueCommand(-1, string.format('/unbind %s', keyName));
+    end
+    HotbarInput.ModifierBlocksActive = false;
+end
+
 function HotbarInput:Initialize()
     if (self.Initialized == true) then
         return;
@@ -81,6 +107,7 @@ function HotbarInput:Initialize()
 
     self:RefreshKeybinds();
     self.Initialized = true;
+    self:SetModifierBlocking((gSettings ~= nil) and (gSettings.BlockCtrlAltFromGame == true));
 end
 
 function HotbarInput:RefreshKeybinds()
@@ -195,11 +222,24 @@ function HotbarInput:ValidateKeybind(keybind)
 end
 
 function HotbarInput:Shutdown()
+    self:SetModifierBlocking(false);
     for keybind, _ in pairs(self.RegisteredKeybinds) do
         UnregisterKeybind(keybind);
     end
     self.RegisteredKeybinds = T{};
     self.Initialized = false;
+end
+
+function HotbarInput:SetModifierBlocking(enable)
+    if (enable == true) then
+        if (HotbarInput.ModifierBlocksActive == false) then
+            RegisterModifierBlocks();
+        end
+    else
+        if (HotbarInput.ModifierBlocksActive == true) then
+            UnregisterModifierBlocks();
+        end
+    end
 end
 
 return HotbarInput;
