@@ -121,17 +121,186 @@ local function CreateLargeRecastObject(layout)
     return obj;
 end
 
+local function GetMacroNameWrapWidth(layout)
+    if (gSettings.WrapMacroNames ~= true) then
+        return 0;
+    end
+
+    if (layout.Frame ~= nil) and (type(layout.Frame.Width) == 'number') and (layout.Frame.Width > 0) then
+        return math.floor(layout.Frame.Width);
+    end
+
+    if (type(layout.SlotWidth) == 'number') and (layout.SlotWidth > 0) then
+        return math.floor(layout.SlotWidth);
+    end
+
+    if (layout.Icon ~= nil) and (type(layout.Icon.Width) == 'number') and (layout.Icon.Width > 0) then
+        return math.floor(layout.Icon.Width);
+    end
+
+    return 0;
+end
+
+local macroNameWidthCache = {};
+local macroNameWrapCache = {};
+
+local function MeasureTextWidth(obj, cachePrefix, text)
+    if (text == '') then
+        return 0;
+    end
+
+    local cacheKey = string.format('%s|%s', cachePrefix, text);
+    local cached = macroNameWidthCache[cacheKey];
+    if (cached ~= nil) then
+        return cached;
+    end
+
+    local previousText = obj.settings.text;
+    obj:set_text(text);
+    local width = obj:get_text_size();
+    obj:set_text(previousText);
+    if (type(width) ~= 'number') then
+        width = 0;
+    end
+    macroNameWidthCache[cacheKey] = width;
+    return width;
+end
+
+local function WrapLongWord(obj, cachePrefix, word, maxWidth, lines)
+    local startIndex = 1;
+    local wordLength = string.len(word);
+
+    while (startIndex <= wordLength) do
+        local low = startIndex;
+        local high = wordLength;
+        local best = startIndex - 1;
+        while (low <= high) do
+            local mid = math.floor((low + high) / 2);
+            local segment = string.sub(word, startIndex, mid);
+            if (MeasureTextWidth(obj, cachePrefix, segment) <= maxWidth) then
+                best = mid;
+                low = mid + 1;
+            else
+                high = mid - 1;
+            end
+        end
+
+        if (best < startIndex) then
+            best = startIndex;
+        end
+        lines:append(string.sub(word, startIndex, best));
+        startIndex = best + 1;
+    end
+end
+
+local function CanUseSoftWordOverflow(wordWidth, maxWidth)
+    if (maxWidth <= 0) then
+        return false;
+    end
+
+    local overflowAllowance = math.max(4, math.floor(maxWidth * 0.2));
+    return (wordWidth <= (maxWidth + overflowAllowance));
+end
+
+local function WrapParagraph(obj, cachePrefix, paragraph, maxWidth)
+    if (paragraph == '') then
+        return '';
+    end
+
+    local words = T{};
+    for word in string.gmatch(paragraph, '%S+') do
+        words:append(word);
+    end
+
+    if (#words == 0) then
+        return paragraph;
+    end
+
+    local lines = T{};
+    local currentLine = '';
+    for _,word in ipairs(words) do
+        local wordWidth = MeasureTextWidth(obj, cachePrefix, word);
+        if (currentLine == '') then
+            if (wordWidth <= maxWidth) or (CanUseSoftWordOverflow(wordWidth, maxWidth)) then
+                currentLine = word;
+            else
+                WrapLongWord(obj, cachePrefix, word, maxWidth, lines);
+            end
+        else
+            local candidate = string.format('%s %s', currentLine, word);
+            if (MeasureTextWidth(obj, cachePrefix, candidate) <= maxWidth) then
+                currentLine = candidate;
+            else
+                lines:append(currentLine);
+                if (wordWidth <= maxWidth) or (CanUseSoftWordOverflow(wordWidth, maxWidth)) then
+                    currentLine = word;
+                else
+                    WrapLongWord(obj, cachePrefix, word, maxWidth, lines);
+                    currentLine = '';
+                end
+            end
+        end
+    end
+
+    if (currentLine ~= '') then
+        lines:append(currentLine);
+    end
+    return table.concat(lines, '\n');
+end
+
+local function GetSmartWrappedName(obj, text, maxWidth)
+    if (type(text) ~= 'string') or (text == '') or (maxWidth <= 0) then
+        return text;
+    end
+
+    local cachePrefix = string.format('%s|%s|%s|%s|%s',
+        tostring(obj.settings.font_family),
+        tostring(obj.settings.font_height),
+        tostring(obj.settings.font_flags),
+        tostring(obj.settings.outline_width),
+        tostring(maxWidth));
+
+    local wrapCacheKey = string.format('%s|%s', cachePrefix, text);
+    local cached = macroNameWrapCache[wrapCacheKey];
+    if (cached ~= nil) then
+        return cached;
+    end
+
+    local wrappedLines = T{};
+    local startIndex = 1;
+    local textLength = string.len(text);
+    while (startIndex <= textLength) do
+        local newlineIndex = string.find(text, '\n', startIndex, true);
+        if (newlineIndex == nil) then
+            wrappedLines:append(WrapParagraph(obj, cachePrefix, string.sub(text, startIndex), maxWidth));
+            break;
+        end
+
+        wrappedLines:append(WrapParagraph(obj, cachePrefix, string.sub(text, startIndex, newlineIndex - 1), maxWidth));
+        startIndex = newlineIndex + 1;
+        if (startIndex > textLength) then
+            wrappedLines:append('');
+        end
+    end
+
+    local wrappedText = table.concat(wrappedLines, '\n');
+    macroNameWrapCache[wrapCacheKey] = wrappedText;
+    return wrappedText;
+end
+
 function Element:Initialize()
     self.FontObjects = T{};
     for _,entry in ipairs(textOrder) do
         local data = self.Layout[entry];
         if data then
             local obj = gdi:create_object(data, true);
+            obj.DefaultBoxWidth = data.box_width or 0;
             obj.OffsetX = data.OffsetX;
             obj.OffsetY = data.OffsetY;
             self.FontObjects[entry] = obj;
         end
     end
+
     self.LargeRecastObject = CreateLargeRecastObject(self.Layout);
 end
 
@@ -363,6 +532,15 @@ function Element:RenderText(sprite)
                     local text = self.State[entry];
                     if entry == 'Hotkey' then text = self.State.HotkeyLabel; end
                     if (type(text) == 'string') and (text ~= '') then
+                        if (entry == 'Name') then
+                            local wrapWidth = GetMacroNameWrapWidth(self.Layout);
+                            if (wrapWidth > 0) then
+                                obj:set_box_width(0);
+                                text = GetSmartWrappedName(obj, text, wrapWidth);
+                            else
+                                obj:set_box_width(obj.DefaultBoxWidth or 0);
+                            end
+                        end
                         obj:set_text(text);
                         local texture, rect = obj:get_texture();
                         if (texture ~= nil) then

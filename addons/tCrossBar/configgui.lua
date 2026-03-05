@@ -328,6 +328,8 @@ CheckBox('Recast', 'ShowRecast');
                     imgui.ShowHelp('Shows hotkey labels.');
                     CheckBox('Name', 'ShowName');
                     imgui.ShowHelp('Shows action names.');
+                    CheckBox('Wrap Names', 'WrapMacroNames');
+                    imgui.ShowHelp('Wraps macro names to fit each icon on palettes and hotbars.');
                     CheckBox('Palette(Single)', 'ShowSinglePalette');
                     imgui.ShowHelp('Shows selected palette on single display.');
                     CheckBox('Palette(Double)', 'ShowPalette');
