@@ -4,7 +4,6 @@ local activeHeader = { 0.5, 1.0, 0.5, 1.0 };
 
 local state = {
     SelectedHotbar = 1,
-    CapturingSlot = nil,
     HotkeyInputs = {},
 };
 
@@ -145,7 +144,6 @@ function exposed:Render()
         if (imgui.Button(label, { 28, 0 })) then
             if (state.SelectedHotbar ~= i) then
                 state.SelectedHotbar = i;
-                state.CapturingSlot = nil;
                 SyncHotkeyInputs();
             end
         end
@@ -163,14 +161,7 @@ function exposed:Render()
     
     imgui.Separator();
     
-    if (state.CapturingSlot ~= nil) then
-        imgui.TextColored({ 1.0, 1.0, 0.5, 1.0 }, string.format('Capturing key for Slot %d... Press any key.', state.CapturingSlot));
-        imgui.SameLine();
-        if (imgui.Button('Cancel Capture')) then
-            state.CapturingSlot = nil;
-        end
-        imgui.Separator();
-    end
+
     
     SyncHotkeyInputs();
     
@@ -190,7 +181,6 @@ function exposed:Render()
             local binding = slot and slot.Binding;
             local hotkey = slot and slot.Hotkey or '';
             local isUsed = (binding ~= nil);
-            local isCapturing = (state.CapturingSlot == slotIndex);
             
             imgui.TableNextRow();
             
@@ -209,15 +199,7 @@ function exposed:Render()
             end
             state.HotkeyInputs[slotIndex] = hotkeyInput;
             
-            imgui.SameLine();
-            if (imgui.Button('Cap', { 30, 0 })) then
-                state.CapturingSlot = slotIndex;
-                Message(string.format('Capturing key for Slot %d. Press any key combination...', slotIndex));
-            end
-            if isCapturing then
-                imgui.SameLine();
-                imgui.TextColored({ 1.0, 1.0, 0.5, 1.0 }, '*');
-            end
+
             
             imgui.SameLine();
             if (imgui.Button('X', { 22, 0 })) then
@@ -317,18 +299,6 @@ function exposed:Render()
         Message(string.format('Cleared all bindings for Bar %d', state.SelectedHotbar));
     end
     imgui.SameLine();
-    if (imgui.Button('Save Hotbars To Disk')) then
-        if (gHotbarBindings ~= nil) then
-            if (gHotbarBindings:Save() == true) then
-                Message('Saved hotbars to disk.');
-            else
-                Error('Failed to save hotbars to disk. Check previous errors for details.');
-            end
-        else
-            Error('Cannot save hotbars: hotbar bindings are not initialized.');
-        end
-    end
-    imgui.SameLine();
     if (imgui.Button('Refresh Display')) then
         if gHotbarDisplay then
             gHotbarDisplay:UpdateBindings();
@@ -340,51 +310,6 @@ function exposed:Render()
     
     imgui.EndChild();
 end
-
-function exposed:HandleKeyCapture(key, down)
-    if (state.CapturingSlot == nil) or (not down) then
-        return false;
-    end
-    
-    local keyName = keyNames[key];
-    if (keyName == nil) then
-        return false;
-    end
-    
-    local ctrlState = AshitaCore:GetInputManager():GetKeyboard():IsKeyDown(0x1D);
-    local altState = AshitaCore:GetInputManager():GetKeyboard():IsKeyDown(0x38);
-    local shiftState = AshitaCore:GetInputManager():GetKeyboard():IsKeyDown(0x2A);
-    
-    local hotkey = '';
-    if ctrlState then
-        hotkey = hotkey .. '^';
-    end
-    if altState then
-        hotkey = hotkey .. '!';
-    end
-    if shiftState then
-        hotkey = hotkey .. '+';
-    end
-    hotkey = hotkey .. keyName;
-    
-    if SaveHotkey(state.SelectedHotbar, state.CapturingSlot, hotkey) then
-        state.HotkeyInputs[state.CapturingSlot] = { hotkey };
-        Message(string.format('Bound %s to Bar %d Slot %d', GetHotkeyLabel(hotkey), state.SelectedHotbar, state.CapturingSlot));
-    end
-    
-    state.CapturingSlot = nil;
-    
-    return true;
-end
-
-function exposed:GetCapturing()
-    return state.CapturingSlot ~= nil;
-end
-
-function exposed:CancelCapture()
-    state.CapturingSlot = nil;
-end
-
 function exposed:Show()
     SyncHotkeyInputs();
 end
