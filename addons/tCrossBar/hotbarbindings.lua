@@ -157,6 +157,16 @@ local function LoadDefaultsInternal(name, id, job)
     end
 end
 
+local function ApplyBindings()
+    if (gHotbarDisplay ~= nil) and (gHotbarDisplay.UpdateBindings ~= nil) then
+        gHotbarDisplay:UpdateBindings();
+    end
+
+    if (gHotbarInput ~= nil) and (gHotbarInput.RefreshKeybinds ~= nil) then
+        gHotbarInput:RefreshKeybinds();
+    end
+end
+
 local function TryInitializePaths()
     if (bindings.GlobalPath ~= nil) and (bindings.JobPath ~= nil) then
         return true;
@@ -308,6 +318,7 @@ local exposed = {};
 
 function exposed:LoadDefaults(name, id, job)
     LoadDefaultsInternal(name, id, job);
+    ApplyBindings();
 end
 
 function exposed:GetMergedHotbars()
