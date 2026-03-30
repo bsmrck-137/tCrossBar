@@ -10,55 +10,162 @@ local playerData = {
     LoggedIn = false,
 };
 
---Initialize name/id/merits if ingame
-local playerIndex = AshitaCore:GetMemoryManager():GetParty():GetMemberTargetIndex(0);
-if playerIndex ~= 0 then
-    local entity = AshitaCore:GetMemoryManager():GetEntity();
-    local flags = entity:GetRenderFlags0(playerIndex);
-    if (bit.band(flags, 0x200) == 0x200) and (bit.band(flags, 0x4000) == 0) then
-        playerData.LoggedIn = true;
-        playerData.Name = entity:GetName(playerIndex);
-        playerData.Id = entity:GetServerId(playerIndex);
-        playerData.Job = {
-            MainJob = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(),
-            MainJobLevel = AshitaCore:GetMemoryManager():GetPlayer():GetMainJobLevel(),
-            SubJob = AshitaCore:GetMemoryManager():GetPlayer():GetSubJob(),
-            SubJobLevel = AshitaCore:GetMemoryManager():GetPlayer():GetSubJobLevel(),
-        };
-        
-        if (playerData.Job.MainJob > 0) and (playerData.Id ~= 0) then
-            gBindings:LoadDefaults(playerData.Name, playerData.Id, playerData.Job.MainJob);
-        end
+local function ReloadHotbars(name, id, job)
+    if (gHotbarBindings == nil) or (gHotbarBindings.LoadDefaults == nil) then
+        return false;
+    end
 
-        local pInventory = AshitaCore:GetPointerManager():Get('inventory');
-        if (pInventory > 0) then
-            local ptr = ashita.memory.read_uint32(pInventory);
-            if (ptr ~= 0) then                    
-                ptr = ashita.memory.read_uint32(ptr);
-                if (ptr ~= 0) then
-                    ptr = ptr + 0x2CFF4;
-                    local count = ashita.memory.read_uint16(ptr + 2);
-                    local meritptr = ashita.memory.read_uint32(ptr + 4);
-                    if (count > 0) then
-                        for i = 1,count do
-                            local meritId = ashita.memory.read_uint16(meritptr + 0);
-                            local meritCount = ashita.memory.read_uint8(meritptr + 3);
-                            playerData.MeritCount[meritId] = meritCount;
-                            meritptr = meritptr + 4;
-                        end
+    gHotbarBindings:LoadDefaults(name, id, job);
+    return true;
+end
+
+local startupInitialized = false;
+local hotbarStartupSyncPending = true;
+
+local function TryFinalizeHotbarStartupSync()
+    if (hotbarStartupSyncPending == false) then
+        return;
+    end
+    if (playerData.LoggedIn == false) then
+        return;
+    end
+    if (playerData.Job == nil) or (playerData.Job.MainJob == nil) then
+        return;
+    end
+    if (playerData.Name == nil) or (playerData.Name == '') or (playerData.Id == 0) or (playerData.Job.MainJob == 0) then
+        return;
+    end
+
+    if (ReloadHotbars(playerData.Name, playerData.Id, playerData.Job.MainJob) == false) then
+        return;
+    end
+
+    if (gInitializer ~= nil) and (gInitializer.ApplyHotbars ~= nil) then
+        gInitializer:ApplyHotbars();
+    end
+
+    hotbarStartupSyncPending = false;
+end
+
+local function LoadMerits()
+    local pInventory = AshitaCore:GetPointerManager():Get('inventory');
+    if (pInventory > 0) then
+        local ptr = ashita.memory.read_uint32(pInventory);
+        if (ptr ~= 0) then
+            ptr = ashita.memory.read_uint32(ptr);
+            if (ptr ~= 0) then
+                ptr = ptr + 0x2CFF4;
+                local count = ashita.memory.read_uint16(ptr + 2);
+                local meritptr = ashita.memory.read_uint32(ptr + 4);
+                if (count > 0) then
+                    for i = 1,count do
+                        local meritId = ashita.memory.read_uint16(meritptr + 0);
+                        local meritCount = ashita.memory.read_uint8(meritptr + 3);
+                        playerData.MeritCount[meritId] = meritCount;
+                        meritptr = meritptr + 4;
                     end
                 end
             end
         end
-
-        for i = 1,1024 do
-            playerData.Spells[i] = AshitaCore:GetMemoryManager():GetPlayer():HasSpell(i);
-        end
-        for i = 1,1792 do
-            playerData.Abilities[i] = AshitaCore:GetMemoryManager():GetPlayer():HasAbility(i);
-        end
     end
 end
+
+local function LoadKnownActions(player)
+    for i = 1,1024 do
+        playerData.Spells[i] = player:HasSpell(i);
+    end
+    for i = 1,1792 do
+        playerData.Abilities[i] = player:HasAbility(i);
+    end
+end
+
+local function TryInitializeFromMemory()
+    local party = AshitaCore:GetMemoryManager():GetParty();
+    if (party == nil) then
+        return false;
+    end
+    local playerIndex = party:GetMemberTargetIndex(0);
+    if (playerIndex == 0) then
+        return false;
+    end
+
+    local entity = AshitaCore:GetMemoryManager():GetEntity();
+    if (entity == nil) then
+        return false;
+    end
+
+    local flags = entity:GetRenderFlags0(playerIndex);
+    if (bit.band(flags, 0x200) ~= 0x200) or (bit.band(flags, 0x4000) == 0x4000) then
+        return false;
+    end
+
+    local player = AshitaCore:GetMemoryManager():GetPlayer();
+    if (player == nil) then
+        return false;
+    end
+
+    local name = entity:GetName(playerIndex);
+    local id = entity:GetServerId(playerIndex);
+    local job = player:GetMainJob();
+    if (name == nil) or (name == '') or (id == 0) or (job == 0) then
+        return false;
+    end
+
+    local sub = player:GetSubJob();
+    local changedIdentity = (id ~= playerData.Id) or (name ~= playerData.Name);
+    local changedJob = (playerData.Job == nil) or (job ~= playerData.Job.MainJob) or (sub ~= playerData.Job.SubJob);
+
+    if (changedIdentity) then
+        playerData = {
+            Abilities = T{},
+            Spells = T{},
+            Id = id,
+            Name = name,
+            MeritCount = {},
+            Job = {
+                MainJob = job,
+                MainJobLevel = player:GetMainJobLevel(),
+                SubJob = sub,
+                SubJobLevel = player:GetSubJobLevel()
+            },
+            JobPoints = {},
+            JobPointInit = { Categories = false, Totals = false, Timer = os.clock() + 3 },
+            LoggedIn = true,
+        };
+    else
+        if (playerData.Job == nil) then
+            playerData.Job = {};
+        end
+        playerData.Id = id;
+        playerData.Name = name;
+        playerData.Job.MainJob = job;
+        playerData.Job.MainJobLevel = player:GetMainJobLevel();
+        playerData.Job.SubJob = sub;
+        playerData.Job.SubJobLevel = player:GetSubJobLevel();
+        playerData.LoggedIn = true;
+    end
+
+    if (changedIdentity) or (changedJob) or (startupInitialized == false) then
+        gBindings:LoadDefaults(playerData.Name, playerData.Id, playerData.Job.MainJob);
+        hotbarStartupSyncPending = (ReloadHotbars(playerData.Name, playerData.Id, playerData.Job.MainJob) == false);
+    end
+
+    LoadMerits();
+    LoadKnownActions(player);
+
+    TryFinalizeHotbarStartupSync();
+
+    return true;
+end
+
+startupInitialized = TryInitializeFromMemory();
+
+ashita.events.register('d3d_present', 'player_tracker_startup_init', function ()
+    if (startupInitialized == false) then
+        startupInitialized = TryInitializeFromMemory();
+    end
+    TryFinalizeHotbarStartupSync();
+end);
 
 
 local knownSpells = T{};
@@ -94,7 +201,10 @@ ashita.events.register('packet_in', 'player_tracker_handleincomingpacket', funct
             name = string.sub(name, 1, i - 1);
         end
 
-        if (id ~= playerData.Id) or (name ~= playerData.Name) then
+        local changedIdentity = (id ~= playerData.Id) or (name ~= playerData.Name);
+        local changedJob = (playerData.Job == nil) or (job ~= playerData.Job.MainJob) or (sub ~= playerData.Job.SubJob);
+
+        if (changedIdentity) then
             playerData = {
                 Abilities = T{},
                 Spells = T{},
@@ -110,35 +220,45 @@ ashita.events.register('packet_in', 'player_tracker_handleincomingpacket', funct
                 JobPoints = {},
                 JobPointInit = { Categories = false, Totals = false, Timer = os.clock() + 3 }
             };
-            gBindings:LoadDefaults(playerData.Name, playerData.Id, playerData.Job.MainJob);
-        elseif (job ~= playerData.Job.MainJob) or (sub ~= playerData.Job.SubJob) then
+        end
+
+        if (changedIdentity) or (changedJob) or (startupInitialized == false) then
             playerData.Job.MainJob = job;
             playerData.Job.SubJob = sub;
             gBindings:LoadDefaults(playerData.Name, playerData.Id, playerData.Job.MainJob);
+            hotbarStartupSyncPending = (ReloadHotbars(playerData.Name, playerData.Id, playerData.Job.MainJob) == false);
         end
+
         playerData.LoggedIn = true;
+        startupInitialized = true;
     elseif (e.id == 0x00B) then
         playerData.LoggedIn = false;
+        startupInitialized = false;
+        hotbarStartupSyncPending = true;
     elseif (e.id == 0x01B) then
         local job = struct.unpack('B', e.data, 0x08 + 1);
         local sub = struct.unpack('B', e.data, 0x0B + 1);
-        if ((job ~= playerData.Job.MainJob) or (sub ~= playerData.Job.SubJob)) and (playerData.Id ~= 0) then
+        if (((job ~= playerData.Job.MainJob) or (sub ~= playerData.Job.SubJob) or (startupInitialized == false)) and (playerData.Id ~= 0)) then
             playerData.Job.MainJob = job;
             playerData.Job.SubJob = sub;
             gBindings:LoadDefaults(playerData.Name, playerData.Id, playerData.Job.MainJob);
+            hotbarStartupSyncPending = (ReloadHotbars(playerData.Name, playerData.Id, playerData.Job.MainJob) == false);
         end
+        startupInitialized = true;
     elseif (e.id == 0x061) then
         local job = struct.unpack('B', e.data, 0x0C + 1);
         local mainLevel = struct.unpack('B', e.data, 0x0D + 1);
         local sub = struct.unpack('B', e.data, 0x0E + 1);
         local subLevel = struct.unpack('B', e.data, 0x0F + 1);
-        if ((job ~= playerData.Job.MainJob) or (sub ~= playerData.Job.SubJob)) and (playerData.Id ~= 0) then
+        if (((job ~= playerData.Job.MainJob) or (sub ~= playerData.Job.SubJob) or (startupInitialized == false)) and (playerData.Id ~= 0)) then
             playerData.Job.MainJob = job;
             playerData.Job.SubJob = sub;
             gBindings:LoadDefaults(playerData.Name, playerData.Id, playerData.Job.MainJob);
+            hotbarStartupSyncPending = (ReloadHotbars(playerData.Name, playerData.Id, playerData.Job.MainJob) == false);
         end
         playerData.Job.MainJobLevel = mainLevel;
         playerData.Job.SubJobLevel = subLevel;
+        startupInitialized = true;
     elseif (e.id == 0x63) then
         if struct.unpack('B', e.data, 0x04 + 1) == 5 then
             for i = 1,22,1 do

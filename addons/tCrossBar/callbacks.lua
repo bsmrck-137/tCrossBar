@@ -160,15 +160,29 @@ local function ShouldHide()
     return false;
 end
 
+local function IsDraggingHotbar()
+    if (gHotbarDisplay == nil) or (not gHotbarDisplay.Valid) then
+        return false;
+    end
+    for _, hotbar in ipairs(gHotbarDisplay.Hotbars) do
+        if hotbar.AllowDrag then
+            return true;
+        end
+    end
+    return false;
+end
+
 ashita.events.register('d3d_present', 'd3d_present_cb', function ()
 player:UpdateBLUSpells();
     gController:Tick();    
     gConfigGUI:Render();
     gBindingGUI:Render();
     gMacroEditor:Render();
+    gHotbarGUI:Render();
 
     renderTarget = nil;
     if (gConfigGUI.ForceDisplay) then
+        isHidden = false;
         gConfigGUI.ForceDisplay:Render(1);
         renderTarget = gConfigGUI.ForceDisplay;
         return;
@@ -180,72 +194,71 @@ player:UpdateBLUSpells();
         return;
     end
 
-    if (ShouldHide()) then
+    local draggingHotbar = IsDraggingHotbar();
+    
+    if (ShouldHide()) and (not draggingHotbar) then
         isHidden = true;
         return;
     end
     
     isHidden = false;
-    
+
     renderTarget = gSingleDisplay;
     local macroState = gController:GetMacroState();
 
-    -- Double-tap states (5=LT2, 6=RT2): keep main display visible, highlight expanded
-    if (gSettings.ShowExpandedDisplay) and ((macroState == 5) or (macroState == 6)) then
-        -- Show main bars as if using the corresponding single trigger
-        local mainState = (macroState == 5) and 1 or 2;
-        if (gSettings.LTRTMode == 'FullDouble') then
-            gDoubleDisplay:Render(mainState, false, -1); -- Dim both sides of main display
-            renderTarget = gDoubleDisplay;
-        elseif (gSettings.LTRTMode == 'HalfDouble') then
-            gDoubleDisplay:Render(mainState, true, -1);
-            renderTarget = gDoubleDisplay;
-        else
-            gSingleDisplay:Render(mainState);
-            renderTarget = gSingleDisplay;
-        end
-        -- Render expanded display with highlight on the active double-tap side
-        gExpandedDisplay:Render(macroState);
-        return;
-    end
-
-    if (macroState == 0) then
-        if (gSettings.ShowDoubleDisplay) then
-            gDoubleDisplay:Render(0, false, 0); -- No dimming
-            renderTarget = gDoubleDisplay;
-        end
-        if (gSettings.ShowExpandedDisplay) then
-            gExpandedDisplay:Render();
-        end
-        return;
-    elseif (macroState < 3) then
-        if (gSettings.LTRTMode == 'FullDouble') then
-            gDoubleDisplay:Render(macroState, false, macroState); -- Dim inactive side
-            renderTarget = gDoubleDisplay;
-        elseif (gSettings.LTRTMode == 'HalfDouble') then
-            gDoubleDisplay:Render(macroState, true);
+    if (gSettings.ShowPaletteDisplay) then
+        if (gSettings.ShowExpandedDisplay) and ((macroState == 5) or (macroState == 6)) then
+            local mainState = (macroState == 5) and 1 or 2;
+            if (gSettings.LTRTMode == 'FullDouble') then
+                gDoubleDisplay:Render(mainState, false, -1);
+                renderTarget = gDoubleDisplay;
+            elseif (gSettings.LTRTMode == 'HalfDouble') then
+                gDoubleDisplay:Render(mainState, true, -1);
+                renderTarget = gDoubleDisplay;
+            else
+                gSingleDisplay:Render(mainState);
+                renderTarget = gSingleDisplay;
+            end
+            gExpandedDisplay:Render(macroState);
+        elseif (macroState == 0) then
+            if (gSettings.ShowDoubleDisplay) then
+                gDoubleDisplay:Render(0, false, 0);
+                renderTarget = gDoubleDisplay;
+            end
             if (gSettings.ShowExpandedDisplay) then
                 gExpandedDisplay:Render();
             end
-            return;
+        elseif (macroState < 3) then
+            if (gSettings.LTRTMode == 'FullDouble') then
+                gDoubleDisplay:Render(macroState, false, macroState);
+                renderTarget = gDoubleDisplay;
+            elseif (gSettings.LTRTMode == 'HalfDouble') then
+                gDoubleDisplay:Render(macroState, true);
+                if (gSettings.ShowExpandedDisplay) then
+                    gExpandedDisplay:Render();
+                end
+            else
+                renderTarget:Render(macroState);
+                if (gSettings.ShowExpandedDisplay) then
+                    gExpandedDisplay:Render();
+                end
+            end
+        else
+            renderTarget:Render(macroState);
+            if (gSettings.ShowExpandedDisplay) then
+                gExpandedDisplay:Render();
+            end
         end
-        if (gSettings.ShowExpandedDisplay) then
-            gExpandedDisplay:Render(); -- No highlight for single L2/R2
-        end
-        return;
     end
 
-    renderTarget:Render(macroState);
-
-    -- Render expanded display (LT2/RT2) alongside main crossbar when enabled
-    if (gSettings.ShowExpandedDisplay) then
-        gExpandedDisplay:Render();
+    if (gSettings.ShowHotbars or draggingHotbar) and (gHotbarDisplay) and (gHotbarDisplay.Valid) then
+        gHotbarDisplay:Render();
     end
 end);
 
 local mouseDown;
 ashita.events.register('mouse', 'mouse_cb', function (e)
-    if (isHidden) then
+    if (isHidden) and (gConfigGUI.ForceDisplay == nil) and (not IsDraggingHotbar()) then
         return;
     end
 
@@ -255,6 +268,10 @@ ashita.events.register('mouse', 'mouse_cb', function (e)
 
     if (gSettings.ShowExpandedDisplay) and (not e.blocked) then
         gExpandedDisplay:HandleMouse(e);
+    end
+
+    if (gSettings.ShowHotbars or IsDraggingHotbar()) and (gHotbarDisplay) and (gHotbarDisplay.Valid) and (not e.blocked) then
+        gHotbarDisplay:HandleMouse(e);
     end
 
     if (e.message == 513) then
@@ -268,5 +285,49 @@ ashita.events.register('mouse', 'mouse_cb', function (e)
             e.blocked = true;
             mouseDown = false;
         end
+    end
+end);
+
+local modifierScanCodes = {
+    [0x1D] = 'Ctrl', [0x9D] = 'Ctrl',
+    [0x38] = 'Alt',  [0xB8] = 'Alt',
+    [0x2A] = 'Shift', [0x36] = 'Shift',
+    [0x11] = 'Ctrl',
+    [0x12] = 'Alt',
+};
+
+local function ShouldBlockModifier(modifierName)
+    if (ShouldHide()) then
+        return false;
+    end
+    if (gHotbarInput == nil) then
+        return false;
+    end
+    local modBinds = gHotbarInput:HasModifierBinds();
+    if (modBinds == nil) then
+        return false;
+    end
+    return modBinds[modifierName] == true;
+end
+
+ashita.events.register('keyboard', 'keyboard_cb', function (e)
+    local modName = modifierScanCodes[e.key];
+    if (modName ~= nil) then
+        if (ShouldBlockModifier(modName)) then
+            e.blocked = true;
+            return;
+        end
+    end
+
+    local managerCapturing = gHotbarManager:GetCapturing();
+    local guiCapturing = (gHotbarGUI ~= nil) and (gHotbarGUI.GetCapturing ~= nil) and (gHotbarGUI:GetCapturing());
+    if (managerCapturing or guiCapturing) then
+        if (managerCapturing) then
+            gHotbarManager:HandleKeyCapture(e.key, (e.down == 1));
+        elseif (guiCapturing) then
+            gHotbarGUI:HandleKeyCapture(e.key, (e.down == 1));
+        end
+        e.blocked = true;
+        return;
     end
 end);

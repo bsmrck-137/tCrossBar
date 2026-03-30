@@ -108,6 +108,29 @@ local function GetControllers()
     end
 end
 
+local function GetHotbarLayouts()
+    local layouts = T{};
+    local layoutPaths = T{
+        string.format('%sconfig/addons/%s/resources/hotbarlayouts/', AshitaCore:GetInstallPath(), addon.name),
+        string.format('%saddons/%s/resources/hotbarlayouts/', AshitaCore:GetInstallPath(), addon.name),
+    };
+
+    for _,path in ipairs(layoutPaths) do
+        if not (ashita.fs.exists(path)) then
+            ashita.fs.create_directory(path);
+        end
+        local contents = ashita.fs.get_directory(path, '.*\\.lua');
+        for _,file in pairs(contents) do
+            file = string.sub(file, 1, -5);
+            if not layouts:contains(file) then
+                layouts:append(file);
+            end
+        end
+    end
+
+    state.HotbarLayouts = layouts;
+end
+
 local function CheckBox(text, member)
     if (imgui.Checkbox(string.format('%s##Config_%s', text, text), { gSettings[member] })) then
         gSettings[member] = not gSettings[member];
@@ -305,10 +328,14 @@ CheckBox('Recast', 'ShowRecast');
                     imgui.ShowHelp('Shows hotkey labels.');
                     CheckBox('Name', 'ShowName');
                     imgui.ShowHelp('Shows action names.');
+                    CheckBox('Wrap Names', 'WrapMacroNames');
+                    imgui.ShowHelp('Wraps macro names to fit each icon on palettes and hotbars.');
                     CheckBox('Palette(Single)', 'ShowSinglePalette');
                     imgui.ShowHelp('Shows selected palette on single display.');
                     CheckBox('Palette(Double)', 'ShowPalette');
                     imgui.ShowHelp('Shows selected palette on double display.');
+                    CheckBox('Palette Display', 'ShowPaletteDisplay');
+                    imgui.ShowHelp('Shows the crossbar palette display.');
                     CheckBox('Dim Inactive', 'DimInactive');
                     imgui.ShowHelp('When enabled, inactive crossbars will be dimmed to highlight the active bar.');
                     imgui.EndGroup();
@@ -423,6 +450,16 @@ CheckBox('Recast', 'ShowRecast');
                     gPaletteManager:Render();
                     imgui.EndTabItem();
                 end
+
+                if imgui.BeginTabItem('Hotbar Bindings##tCrossbarHotbarBindingsTab') then
+                    gHotbarManager:Render();
+                    imgui.EndTabItem();
+                end
+
+                if imgui.BeginTabItem('Hotbars##tCrossbarHotbarsTab') then
+                    self:RenderHotbarsTab();
+                    imgui.EndTabItem();
+                end
                 
                 imgui.EndTabBar();
             end
@@ -431,7 +468,11 @@ CheckBox('Recast', 'ShowRecast');
     end
 
     if state.IsOpen[1] then
-        self.ForceDisplay = state.DragTarget;
+        if (state.DragTarget ~= nil) and (state.DragTarget ~= gSingleDisplay) and (state.DragTarget ~= gDoubleDisplay) and (state.DragTarget ~= gExpandedDisplay) then
+            self.ForceDisplay = nil;
+        else
+            self.ForceDisplay = state.DragTarget;
+        end
     else
         self.ForceDisplay = nil;
         if (state.DragTarget ~= nil) then
@@ -444,10 +485,156 @@ end
 function exposed:Show()
     GetControllers();
     GetLayouts();
+    GetHotbarLayouts();
     state.ForceTab = true;
     state.IsOpen = { true };
     state.DragTarget = nil;
     gPaletteManager:Show();
+    gHotbarManager:Show();
+end
+
+function exposed:RenderHotbarsTab()
+    imgui.TextColored(header, 'Hotbar Settings');
+    CheckBox('Show Hotbars', 'ShowHotbars');
+    imgui.ShowHelp('When enabled, keyboard hotbars will be displayed alongside controller crossbars.');
+
+    CheckBox('Block Ctrl/Alt from game', 'BlockCtrlAltFromGame');
+    imgui.ShowHelp('When enabled, Ctrl and Alt are never sent to the game, so the native macro palette does not open. Disable if you need to use game macros.');
+
+    imgui.Separator();
+    imgui.TextColored(header, 'Hotbar Visibility');
+
+    if (gSettings.Hotbars == nil) then
+        gSettings.Hotbars = {};
+    end
+
+    for i = 1, 10 do
+        local hotbarSettings = gSettings.Hotbars[i] or {};
+        local visible = hotbarSettings.Visible or false;
+
+        imgui.PushID(string.format('Hotbar%d', i));
+        if imgui.Checkbox(string.format('Bar %d##Bar%dVisible', i, i), { visible }) then
+            if (gSettings.Hotbars[i] == nil) then
+                gSettings.Hotbars[i] = {
+                    Name = string.format('Bar %d', i),
+                    Visible = true,
+                    Scale = 1.0,
+                    Layout = 'horizontal_12x1',
+                    Slots = {},
+                };
+            else
+                gSettings.Hotbars[i].Visible = not gSettings.Hotbars[i].Visible;
+            end
+            settings.save();
+            gInitializer:ApplyHotbars();
+        end
+        imgui.PopID();
+
+        if (i % 5 ~= 0) then
+            imgui.SameLine();
+        end
+    end
+
+    imgui.Separator();
+    imgui.TextColored(header, 'Hotbar Layouts');
+
+    if (state.HotbarLayouts == nil) or (#state.HotbarLayouts == 0) then
+        imgui.Text('No hotbar layouts found.');
+    else
+        for i = 1, 10 do
+            local hotbarSettings = gSettings.Hotbars[i];
+            if (hotbarSettings ~= nil) and (hotbarSettings.Visible == true) then
+                imgui.Text(string.format('Bar %d:', i));
+                imgui.SameLine();
+
+                local currentLayout = hotbarSettings.Layout or 'horizontal_12x1';
+                local layoutIndex = 1;
+                for idx, layout in ipairs(state.HotbarLayouts) do
+                    if (layout == currentLayout) then
+                        layoutIndex = idx;
+                        break;
+                    end
+                end
+
+                imgui.PushID(string.format('Bar%dLayout', i));
+                if (imgui.BeginCombo('##Layout', currentLayout, ImGuiComboFlags_None)) then
+                    for idx, layout in ipairs(state.HotbarLayouts) do
+                        if (imgui.Selectable(layout, idx == layoutIndex)) then
+                            gSettings.Hotbars[i].Layout = layout;
+                            settings.save();
+                            gInitializer:ApplyHotbars();
+                        end
+                    end
+                    imgui.EndCombo();
+                end
+                imgui.PopID();
+
+                imgui.SameLine();
+                imgui.Text('Scale:');
+                imgui.SameLine();
+                local scale = { hotbarSettings.Scale or 1.0 };
+                imgui.PushID(string.format('Bar%dScale', i));
+                imgui.SetNextItemWidth(100);
+                if imgui.SliderFloat('##Scale', scale, 0.5, 2.0, '%.2f', ImGuiSliderFlags_AlwaysClamp) then
+                    gSettings.Hotbars[i].Scale = scale[1];
+                    settings.save();
+                    gInitializer:ApplyHotbars();
+                end
+                imgui.PopID();
+
+                if (gHotbarDisplay ~= nil) and (gHotbarDisplay.Valid) then
+                    local hotbar = nil;
+                    for _, h in ipairs(gHotbarDisplay.Hotbars) do
+                        if h.Index == i then
+                            hotbar = h;
+                            break;
+                        end
+                    end
+                    if (hotbar ~= nil) and (hotbar.Valid) then
+                        imgui.SameLine();
+                        local isDragTarget = (state.DragTarget == hotbar);
+                        local button = string.format('%s##DragBar%d', isDragTarget and 'End Drag' or 'Drag', i);
+                        if (imgui.Button(button)) then
+                            if isDragTarget then
+                                hotbar.AllowDrag = false;
+                                state.DragTarget = nil;
+                            else
+                                if (state.DragTarget ~= nil) then
+                                    state.DragTarget.AllowDrag = false;
+                                end
+                                hotbar.AllowDrag = true;
+                                state.DragTarget = hotbar;
+                            end
+                        end
+                        imgui.ShowHelp('Enable drag mode to reposition this hotbar.', true);
+                        imgui.SameLine();
+                        if (imgui.Button(string.format('Reset##ResetBar%d', i))) then
+                            gSettings.Hotbars[i].Position = nil;
+                            gInitializer:ApplyHotbars();
+                        end
+                        imgui.ShowHelp('Reset this hotbar to default position.', true);
+                    end
+                end
+            end
+        end
+    end
+
+    imgui.Separator();
+    imgui.TextColored(header, 'Actions');
+
+    if (imgui.Button('Refresh Layouts')) then
+        GetHotbarLayouts();
+    end
+    imgui.SameLine();
+    if (imgui.Button('Reset All Positions')) then
+        for i = 1, 10 do
+            if (gSettings.Hotbars[i] ~= nil) then
+                gSettings.Hotbars[i].Position = { 0, 0 };
+            end
+        end
+        settings.save();
+        gInitializer:ApplyHotbars();
+    end
 end
 
 return exposed;
